@@ -1,39 +1,44 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
-#################################################################################
-#                                                                               #
-#    Copyright (C) 2011-2012 Cynthia Wagner, Jerome Francois, Samuel Marchal    #
-#                            Radu State, Thomas Engel                           #
-#    Copyright (C) 2011-2012 SnT University of Luxembourg                       #
-#                                                                               #
-#    This file is part of SDBF GPL Edition, a Smart DNS Brute-Forcing Tool      #
-#                                                                               #
-#    SDBF GPL Edition is free software: you can redistribute it and/or modify   #
-#    it under the terms of the GNU General Public License as published by       #
-#    the Free Software Foundation, either version 3 of the License, or          #
-#    (at your option) any later version.                                        #
-#                                                                               #
-#    SDBF GPL Edition is distributed in the hope that it will be useful,        #
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of             #
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              #
-#    GNU General Public License for more details.                               #
-#                                                                               #
-#    You should have received a copy of the GNU General Public License          #
-#    along with SDBF GPL Edition.  If not, see <http://www.gnu.org/licenses/>.  #
-#                                                                               #
-#################################################################################
+################################################################################
+#                                                                              #
+#    Copyright (C) 2011-2012 Cynthia Wagner, Jerome Francois, Samuel Marchal   #
+#                            Radu State, Thomas Engel                          #
+#    Copyright (C) 2011-2012 SnT University of Luxembourg                      #
+#                                                                              #
+#    This file is part of SDBF GPL Edition, a Smart DNS Brute-Forcing Tool     #
+#                                                                              #
+#    SDBF GPL Edition is free software: you can redistribute it and/or modify  #
+#    it under the terms of the GNU General Public License as published by      #
+#    the Free Software Foundation, either version 3 of the License, or         #
+#    (at your option) any later version.                                       #
+#                                                                              #
+#    SDBF GPL Edition is distributed in the hope that it will be useful,       #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of            #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             #
+#    GNU General Public License for more details.                              #
+#                                                                              #
+#    You should have received a copy of the GNU General Public License         #
+#    along with SDBF GPL Edition.  If not, see <http://www.gnu.org/licenses/>. #
+#                                                                              #
+################################################################################
 
-import sys,re,glob,commands
-import numpy,math
-from optparse import OptionParser
+import sys
+import re
+import glob
+import numpy
+import math
 import copy
 import time
 import random
-import dns.resolver
-from pybloom import BloomFilter
 import time
+import dns.resolver
 
-VALUE="value"
+from optparse import OptionParser
+from bloom_filter import BloomFilter
+
+
+VALUE = "value"
 MODE_CHAR = 1
 MODE_DOM_LENGTH = 2
 MODE_WORD_LENGTH = 3
@@ -41,9 +46,9 @@ MODE_FIRST_CHAR = 4
 OTHERS = 'Others'
 
 
-lower_char =  map(lambda x:chr(x),range(ord('a'),ord('z')+1))
-upper_char =  map(lambda x:chr(x),range(ord('A'),ord('Z')+1))
-figures = map(lambda x:str(x),range(10))
+lower_char = list(map(lambda x:chr(x),range(ord('a'),ord('z')+1)))
+upper_char = list(map(lambda x:chr(x),range(ord('A'),ord('Z')+1)))
+figures = list(map(lambda x:str(x),range(10)))
 
 
 #Model variables
@@ -65,7 +70,7 @@ regexp_wordlength_freq = re.compile("\#\s*distribution of word-length per domain
 regexp_firstchar =re.compile("\#\s*Most occurring first characters",re.I)
 regexp_level = re.compile("level\s*(\d+)")
 
-regexp_trans = re.compile("(\d+)\s+(..):\s*([\.\-e0-9]+)")
+regexp_trans = re.compile(r"(\d+)\s+(.+):\s*([\.\-e0-9]+)")
 
 
 def get_all_chars():
@@ -239,6 +244,8 @@ def read_trans(file_trans):
             char_ent = level_ent[bigram[0]]
             
             char_ent[bigram[1]] = proba
+        else:
+            print('Error line did not match')
     
     for lev in max_proba_transitions.keys():
         max_proba_transitions[lev] = numpy.mean(max_proba_transitions[lev])
@@ -261,7 +268,7 @@ def update_freq(custom_length,levels_opt):
 
 
     for lev,v in freq_word_length.items():
-        all_lengths = range(MIN_WORD_LENGTH[lev],MAX_WORD_LENGTH[lev]+1)
+        all_lengths = list(range(MIN_WORD_LENGTH[lev],MAX_WORD_LENGTH[lev]+1))
 
         for k2 in v.keys():
             all_lengths.remove(k2)
@@ -421,7 +428,7 @@ def generate_score(name,eps_mat,eps_length,eps_start):
     
     
     mult = 1.0
-    for k in (map(lambda x,y: x*y, proba_word_lengths,proba_words)):
+    for k in (list(map(lambda x,y: x*y, proba_word_lengths,proba_words))):
     #for k in proba_words:
         mult = mult * k
         
@@ -458,12 +465,12 @@ if __name__ == "__main__":
     
     options, args = lineparser.parse_args()
 
-    eps_mat = map(lambda x: float(x),options.eps.split(" "))
-    eps_start = map(lambda x: float(x),options.eps_start.split(" "))
-    eps_length = map(lambda x: float(x),options.eps_length.split(" "))
-    levels_opt = map(lambda x: int(x),options.levels.split(" "))
-    mxw = map(lambda x: int(x),options.mxw.split(" "))
-    miw = map(lambda x: int(x),options.miw.split(" "))
+    eps_mat = list(map(lambda x: float(x),options.eps.split(" ")))
+    eps_start = list(map(lambda x: float(x),options.eps_start.split(" ")))
+    eps_length = list(map(lambda x: float(x),options.eps_length.split(" ")))
+    levels_opt = list(map(lambda x: int(x),options.levels.split(" ")))
+    mxw = list(map(lambda x: int(x),options.mxw.split(" ")))
+    miw = list(map(lambda x: int(x),options.miw.split(" ")))
     
     read_info(options.input,mxw,miw)
     read_trans(options.transition)
@@ -490,10 +497,10 @@ if __name__ == "__main__":
                 answers = dns.resolver.query(name,'A')
                 
                 totGood +=1
-                print tot, totGood, totBad, name,"\t\t",
+                print(tot, totGood, totBad, name, "\t\t")
                 for rdata in answers.rrset:
-                    print rdata.to_text(),
-                print "\n",
+                    print(rdata.to_text())
+                print("\n")
                 
                 #time.sleep(0.1)
                 
@@ -503,5 +510,4 @@ if __name__ == "__main__":
                 
             except:
                 totBad +=1
-                print tot, totGood, totBad,name
-
+                print(tot, totGood, totBad,name)

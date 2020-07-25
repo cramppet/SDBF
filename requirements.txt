@@ -1,0 +1,3 @@
+numpy
+bloom-filter
+dnspython
