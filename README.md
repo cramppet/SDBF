@@ -26,15 +26,15 @@ of a domain names.
       domain levels, etc.
     - a "transition" file which contains probability of transitioning from a
       n-gram to a subsequent character
-
-Usage: `./markov.pl REAL_DOMAIN_LIST N-GRAM_SIZE OUTPUT_DISTRIBUTON_FILE OUTPUT_TRANSITION_FILE` 
-Example: `./markov.pl domains.txt 3 distribution.txt transition.txt`
+    - Usage: `./markov.pl REAL_DOMAIN_LIST N-GRAM_SIZE OUTPUT_DISTRIBUTON_FILE OUTPUT_TRANSITION_FILE` 
+    - Example: `./markov.pl domains.txt 3 distribution.txt transition.txt`
 
 2. Next, use `sdbf.py` script to generate new domain names based on the
    "distribution" and the "transition" files previously generated (sample
    "distribution" and "transition" files are given in the package)
 
 Examples: 
+===
 
 1. `./sdbf.py -d distribution.txt -t transition.txt -n 1000 -o results.txt`
   - Probe of 1000 generated domain names and store positive results in

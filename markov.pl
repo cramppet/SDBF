@@ -38,14 +38,20 @@ open(FOUT2,">".$ARGV[3])|| die "impossible opening file";
 
 $valueLengthDomain=0;			#get domain length in chars with all special letters as 0-9,.-/
 $counter=0;				# count instances in file
+
+# we call this "length_of_levels" now
 $lengthDom0=0;				#count length of toplevel
 $lengthDom1=0;				#count length of domain
 $lengthDom2=0;				#count length of 1st sublevel
 $lengthDom3=0;				#count length of 2nd sublevel
+
+# we call this "levels_per_name" now
 $domsup3=0;
 $domeq2=0;
 $domeq1=0;
 $domeq0=0;
+
+
 $all=0;
 $wordsfordomain=0;
 $wordsfordomain0=0;
@@ -58,63 +64,76 @@ $wordsfordomain3=0;
 
 while ($l=<FIN>){
  
+  # strip
   chomp($l);
+  # lowercase
   $l = lc $l;
 
+  # split by '.'
   @word = split (/\./, $l);
+
+  # ???
   $wordsfordomain += ($#word+1);
+
+
+
   if (($#word+1)<=4){
   	$numberElements{$#word+1} +=1;	#get number of all subdomain elements host.hercules.uni.lu = 4
-  }else{
-        $numberElements{4} +=1;
-   }
-   if ($#word >=3){
-	$domsup3++;
-        $firstchar0{substr($word[$#word],0,1)} +=1;
-        $lengthDom0{length($word[$#word])} +=1;	
-	$wordsfordomain0 += 1;				
-  	for ($t0=0;$t0<=(length($word[$#word]-$val));$t0++){     	# calculate most common n-grams for all 4 domain parts separately
-	  $tedo0= substr($word[$#word],$t0,$val);
-	  if (length($tedo0) == $val){			
-	    $dom0{$tedo0} +=1;	
-	    $firstchar0ngram{substr($tedo0,0,1)} +=1;
-	  }
-        } 
-      $firstchar1{substr($word[$#word-1],0,1)} +=1;
-      $lengthDom1{length($word[$#word-1])} +=1;
-      $wordsfordomain1 += 1;
-      for ($t1=0;$t1<=(length($word[$#word-1]-$val));$t1++){		#uni.lu	--> uni ngram
-	   $tedo1= substr($word[$#word-1],$t1,$val);
-	   if (length($tedo1) == $val){
-	     $dom1{$tedo1} +=1;
-	     $firstchar1ngram{substr($tedo1,0,1)} +=1;
-	   
-	   }
-       }
-      $firstchar2{substr($word[$#word-2],0,1)} +=1;
-      $lengthDom2{length($word[$#word-2])} +=1;
-      $wordsfordomain2 += 1;
-      for ($t2=0;$t2<=(length($word[$#word-2]-$val));$t2++){		#hercules.uni.lu --> hercules
-	    $tedo2= substr($word[$#word-2],$t2,$val);
-	    if (length($tedo2) == $val){
-	      $dom2{$tedo2} +=1;
-	      $firstchar2ngram{substr($tedo2,0,1)} +=1;
-	    
-   	    }
-      }
-      $firstchar3{substr($word[$#word-3],0,1)} +=1;
-      $lengthDom3{length($word[$#word+3])} +=1;
-      $wordsfordomain3 += 1;
-       for ($t3=0;$t3<=(length($word[$#word-3]-$val));$t3++){		#host.hercules.uni.lu --> host
-	    $tedo3= substr($word[$#word-3],$t3,$val);
-	    if (length($tedo3) == $val){
-	       $dom3{$tedo3} +=1;
-	       $firstchar3ngram{substr($tedo3,0,1)} +=1;
-	   
-	    }
-       }
+  } else{
+    $numberElements{4} +=1;
+  }
 
+
+
+
+  if ($#word >=3) {
+	$domsup3++;
+
+	$firstchar0{substr($word[$#word], 0, 1)} += 1;
+	$lengthDom0{length($word[$#word])} += 1;	
+	$wordsfordomain0 += 1;				
+  	for ($t0 = 0; $t0 <= (length($word[$#word]-$val)); $t0++) {     	# calculate most common n-grams for all 4 domain parts separately
+		$tedo0 = substr($word[$#word], $t0, $val);
+		if (length($tedo0) == $val) {			
+			$dom0{$tedo0} +=1;	
+			$firstchar0ngram{substr($tedo0,0,1)} +=1;
+		}
+	} 
+
+	$firstchar1{substr($word[$#word-1],0,1)} +=1;
+	$lengthDom1{length($word[$#word-1])} +=1;
+	$wordsfordomain1 += 1;
+	for ($t1=0;$t1<=(length($word[$#word-1]-$val));$t1++) {		#uni.lu	--> uni ngram
+		$tedo1= substr($word[$#word-1],$t1,$val);
+		if (length($tedo1) == $val){
+			$dom1{$tedo1} +=1;
+			$firstchar1ngram{substr($tedo1,0,1)} +=1;
+		}
+	}
+
+	$firstchar2{substr($word[$#word-2],0,1)} +=1;
+	$lengthDom2{length($word[$#word-2])} +=1;
+	$wordsfordomain2 += 1;
+	for ($t2 = 0; $t2 <= (length($word[$#word-2]-$val)); $t2++) {		#hercules.uni.lu --> hercules
+		$tedo2 = substr($word[$#word-2],$t2,$val);
+		if (length($tedo2) == $val){
+			$dom2{$tedo2} +=1;
+			$firstchar2ngram{substr($tedo2,0,1)} +=1;
+		}
+	}
+
+	$firstchar3{substr($word[$#word-3],0,1)} +=1;
+	$lengthDom3{length($word[$#word+3])} +=1;
+	$wordsfordomain3 += 1;
+	for ($t3=0;$t3<=(length($word[$#word-3]-$val));$t3++){		#host.hercules.uni.lu --> host
+		$tedo3= substr($word[$#word-3],$t3,$val);
+		if (length($tedo3) == $val){
+			$dom3{$tedo3} +=1;
+			$firstchar3ngram{substr($tedo3,0,1)} +=1;
+		}
+	}
    }
+
    if ($#word ==2){
 	$domeq2++;
         $firstchar0{substr($word[$#word],0,1)} +=1;
@@ -150,6 +169,7 @@ while ($l=<FIN>){
    	    }
       }
   }
+
    if ($#word ==1){
 	$domeq1++;
         $firstchar0{substr($word[$#word],0,1)} +=1;
@@ -175,6 +195,12 @@ while ($l=<FIN>){
        }   
   }
   
+
+
+
+
+
+
   $valueLengthDomain += length($l);		#calculate overall length of domains in letters
   @letters = split(//,$l);    			#calculate generated alphabet, count letters numbers, '.', ','
   for ($i=0;$i<=$#letters;$i++){
@@ -304,11 +330,11 @@ foreach(sort(@index_dom0)){
 	foreach(sort(@index_firstchar0ngram)){
 		$testchar=$_;
 		#print "$testchar";
-          	if ($test eq $testchar){
-		   #print "$testchar-$firstchar0ngram{$_} = $test/$val";
-		   $freq= $val/$firstchar0ngram{$_};
-                   print FOUT2 "0 $testngram: $freq\n";	
-	       }
+		if ($test eq $testchar){
+			#print "$testchar-$firstchar0ngram{$_} = $test/$val";
+			$freq= $val/$firstchar0ngram{$_};
+			print FOUT2 "0 $testngram: $freq\n";	
+		}
 	}
 }
 

@@ -64,13 +64,13 @@ MIN_WORD_LENGTH = {}
 
 max_proba_transitions = {}
 
-regexp_char_freq = re.compile("\#\s*Character frequences", re.I)
-regexp_domlength_freq = re.compile("\#\s*words of domain name", re.I)
+regexp_char_freq = re.compile(r"#\s*Character frequences", re.I)
+regexp_domlength_freq = re.compile(r"#\s*words of domain name", re.I)
 regexp_wordlength_freq = re.compile(
-    "\#\s*distribution of word-length per domain word", re.I
+    r"#\s*distribution of word-length per domain word", re.I
 )
-regexp_firstchar = re.compile("\#\s*Most occurring first characters", re.I)
-regexp_level = re.compile("level\s*(\d+)")
+regexp_firstchar = re.compile(r"#\s*Most occurring first characters", re.I)
+regexp_level = re.compile(r"level\s*(\d+)")
 
 regexp_trans = re.compile(r"(\d+)\s+(.+):\s*([\.\-e0-9]+)")
 
@@ -309,7 +309,7 @@ def generate_name(
     # Iterate over the words
     for i in range(nwords):
         # Get the level
-        lev = levels_opt[i]
+        # lev = levels_opt[i]
 
         # Get the length of the word for this level
         length = generate_val(
@@ -319,8 +319,9 @@ def generate_name(
         # Generate the first letter
         last_char = generate_val(freq_first[levels_opt[i]], eps_start[levels_opt[i]])
         gen = "" + last_char
+
         # Generate following letters
-        for j in range(length - 1):
+        for _ in range(length - 1):
             if last_char in transitions[levels_opt[i]]:
                 last_char = generate_val(
                     transitions[levels_opt[i]][last_char], eps_mat[levels_opt[i]]
@@ -360,7 +361,7 @@ def generate_feature(name, eps_mat, eps_length, eps_start):
     for lev in range(len(words)):
 
         w = words[lev]
-        n_transitions = len(w)
+        #n_transitions = len(w)
 
         # Get the proba for the current length
         # proba_word_lengths[lev] = get_proba(freq_word_length[lev],eps_length[lev],len(w))
@@ -410,7 +411,7 @@ def generate_score(name, eps_mat, eps_length, eps_start):
         )
 
         # Get the proba of the words
-        n_transitions = len(w)
+        # n_transitions = len(w)
         last_char = w[0]
         w = w[1:6]
 
@@ -588,12 +589,13 @@ if __name__ == "__main__":
             eps_length,
             eps_start,
         )
-        # print name
         if not name in myBloom:
             myBloom.add(name)
             tot += 1
             if tot > options.number_generate:
                 break
+            sys.stdout.write(name + '\n')
+            '''
             try:
 
                 answers = dns.resolver.query(name, "A")
@@ -613,3 +615,4 @@ if __name__ == "__main__":
             except:
                 totBad += 1
                 print(tot, totGood, totBad, name)
+            '''
