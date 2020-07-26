@@ -1,40 +1,56 @@
 #!/usr/bin/env python3
 
+import json
+import argparse
 import sys
 
 
 MAX_LEVELS = 4
 
 
+# BUG: Our "total_chars_per_level" counter is different for level 0
 def main():
-    print("n-gram analysis and stats")
-
     # Total length of all observed DNS names
     total_length = 0
-    # Total number of tokens for observed DNS names
-    total_tokens = 0
-    # Histogram of characters for observed DNS names
-    all_chars = {}
-    # Histogram of number of levels for observed DNS names
-    levels_per_name = {}
-    # Histogram of number of tokens for observed levels
-    total_tokens_per_level = { 0: 0, 1: 0, 2: 0, 3: 0 }
+    # Total number of levels for all observed DNS names
+    total_levels = 0
+    # Histogram of characters over all observed DNS names
+    char_count = {}
+    # Histogram of occurances of number of levels in names; ex. 'a.b.com' = 3
+    level_count = {}
+    # Histogram of number of chars for observed levels
+    total_chars_per_level = { 0: 0, 1: 0, 2: 0, 3: 0 }
     # Histogram of observed first characters for each level
     first_chars_per_level = { 0: {}, 1: {}, 2: {}, 3: {} }
     # Histogram of lengths of levels for observed DNS names
-    length_of_levels = { 0: {}, 1: {}, 2: {}, 3: {} }
+    level_len_count = { 0: {}, 1: {}, 2: {}, 3: {} }
     # Histogram of first character of n-grams for observed levels
     first_chars_per_ngram = { 0: {}, 1: {}, 2: {}, 3: {} }
     # Histogram of n-grams for observed levels
     ngrams_per_level = { 0: {}, 1: {}, 2: {}, 3: {} }
 
     if len(sys.argv) < 3:
-        print('usage: ./markov.py <input_file> <n-gram length> <dist file> <trans file>')
+        #print('usage: ./markov.py <input_file> <n-gram length> <dist file> <trans file>')
+        print('usage: ./markov.py <input_file> <n-gram length> <output file>')
         sys.exit(1)
 
     ngram_len = int(sys.argv[2])
-    dist_file_name = sys.argv[3]
-    trans_file_name = sys.argv[4]
+    output_file_name = sys.argv[3]
+    #dist_file_name = sys.argv[3]
+    #trans_file_name = sys.argv[4]
+    output_root = {
+        'trans': { 0: {}, 1: {}, 2: {}, 3: {} },
+        'dist': {
+            #'total_dns_names': 0,
+            #'avg_name_length': 0,
+            'freq_char': {},
+            'freq_word_length': { 0: {}, 1: {}, 2: {}, 3: {} },
+            'freq_first': { 0: {}, 1: {}, 2: {}, 3: {} },
+            # TODO: We track levels starting from 0, the original reported them
+            # as starting from 1, be aware!
+            'freq_dom_length': { 0: 0, 1: 0, 2: '0', 3: 0, 4: 0 },
+        },
+    }
 
     def preprocess(dns_name):
         return dns_name.strip().lower()
@@ -60,65 +76,56 @@ def main():
             k = min(n, MAX_LEVELS)
 
             total_length += len(name)
-            total_tokens += n
-            inc_or_insert(levels_per_name, k-1) 
+            total_levels += n
+            inc_or_insert(level_count, k-1) 
 
             for i in range(k):
                 inc_or_insert(first_chars_per_level[i], levels[k-(i+1)][0])
-                inc_or_insert(length_of_levels[i], len(levels[k-(i+1)]))
-                inc_or_insert(total_tokens_per_level, i)
+                inc_or_insert(level_len_count[i], len(levels[k-(i+1)]))
+                inc_or_insert(total_chars_per_level, i)
 
                 for ngram in get_ngrams(levels[k-(i+1)]):
                     inc_or_insert(ngrams_per_level[i], ngram)
                     inc_or_insert(first_chars_per_ngram[i], ngram[0])
 
             for letter in name:
-                inc_or_insert(all_chars, letter)
+                inc_or_insert(char_count, letter)
         
-        # TODO: Change output format to single file in JSON format
+        #output_root['dist']['total_dns_names'] = len(dns_names)
+        #output_root['dist']['avg_name_length'] = total_length / len(dns_names)
 
-        with open(dist_file_name, 'w') as dist_file:
-            dist_file.write(f"# Amount of domain names: {len(dns_names)}\n")
-            dist_file.write(f"# Average domain length considering all characters: {total_length/len(dns_names)}\n")
+        for char in sorted(char_count.keys()):
+            freq = char_count[char] / total_length
+            output_root['dist']['freq_char'][char] = freq
 
-            dist_file.write("# Character frequences\n")
-            for char in sorted(all_chars.keys()):
-                dist_file.write(f"{char}: {all_chars[char]/total_length}\n")
+        for level in sorted(level_count.keys()):
+            # BUG: We need to fix the "level+1" in sdbf.py
+            freq = level_count[level] / len(dns_names)
+            output_root['dist']['freq_dom_length'][level + 1] = freq
 
-            # TODO: We track levels starting from 0, the original reported them
-            # as starting from 1, be aware!
+        for level in sorted(level_len_count.keys()):
+            for length in sorted(level_len_count[level].keys()):
+                # TODO: Is this wrong???
+                freq = level_len_count[level][length] / total_chars_per_level[level]
+                output_root['dist']['freq_word_length'][level][length] = freq
 
-            dist_file.write("# Words of domain names :\n")
-            for level in sorted(levels_per_name.keys()):
-                dist_file.write(f"{level+1}: {levels_per_name[level]/len(dns_names)}\n")
+        for level in sorted(first_chars_per_level.keys()):
+            for char in sorted(first_chars_per_level[level].keys()):
+                freq = first_chars_per_level[level][char] / total_chars_per_level[level]
+                output_root['dist']['freq_first'][level][char] = freq
 
-            # BUG: Our "total_tokens_per_level" counter is different for level 0
+        # Serialize ngram transition matrix of Markov Chain
+        for level in sorted(ngrams_per_level.keys()):
+            for ngram in sorted(ngrams_per_level[level].keys()):
+                first = ngram[0]
+                count = ngrams_per_level[level][ngram]
+                for char in sorted(first_chars_per_ngram[level].keys()):
+                    if first == char:
+                        prob = count / first_chars_per_ngram[level][char]
+                        output_root['trans'][level][ngram] = prob
 
-            dist_file.write("\n# distribution of word-length per domain word\n")
-            for level in sorted(length_of_levels.keys()):
-                dist_file.write(f"level {level}: ")
-                for length in sorted(length_of_levels[level].keys()):
-                    dist_file.write(f"{length}: {length_of_levels[level][length]/total_tokens_per_level[level]},")
-                dist_file.write('\n')
-
-            dist_file.write("\n# Most occurring first characters:\n")
-            for level in sorted(first_chars_per_level.keys()):
-                dist_file.write(f"level {level}: ")
-                for char in sorted(first_chars_per_level[level].keys()):
-                    dist_file.write(f"{char}: {first_chars_per_level[level][char]/total_tokens_per_level[level]},")
-                dist_file.write('\n')
-
-        with open(trans_file_name, 'w') as trans_file:
-            for level in sorted(ngrams_per_level.keys()):
-                if level != 0:
-                    trans_file.write(f"level {level}:\n")
-                for ngram in sorted(ngrams_per_level[level].keys()):
-                    first = ngram[0]
-                    count = ngrams_per_level[level][ngram]
-                    for char in sorted(first_chars_per_ngram[level].keys()):
-                        if first == char:
-                            freq = count / first_chars_per_ngram[level][char]
-                            trans_file.write(f"{level} {ngram}: {freq}\n")
+        with open(output_file_name, 'w') as output_file:
+            output_file.write(json.dumps(output_root))
 
 
 if __name__ == '__main__':

@@ -31,8 +31,8 @@ import math
 import copy
 import time
 import random
+import json
 import time
-import dns.resolver
 
 from optparse import OptionParser
 from bloom_filter import BloomFilter
@@ -63,16 +63,6 @@ MAX_WORD_LENGTH = {}
 MIN_WORD_LENGTH = {}
 
 max_proba_transitions = {}
-
-regexp_char_freq = re.compile(r"#\s*Character frequences", re.I)
-regexp_domlength_freq = re.compile(r"#\s*words of domain name", re.I)
-regexp_wordlength_freq = re.compile(
-    r"#\s*distribution of word-length per domain word", re.I
-)
-regexp_firstchar = re.compile(r"#\s*Most occurring first characters", re.I)
-regexp_level = re.compile(r"level\s*(\d+)")
-
-regexp_trans = re.compile(r"(\d+)\s+(.+):\s*([\.\-e0-9]+)")
 
 
 def get_all_chars():
@@ -118,136 +108,81 @@ def get_proba(dict_freq, eps, val):
         return eps / len(get_all_chars())
 
 
-def read_info(file_info, mxw, miw):
+# TODO: They didn't use the character distribution in the original for anything
+# other than trying to identify characters not within their pre-existing charset.
+def read_info(input_file_name, mxw, miw):
+    with open(input_file_name, 'r') as input_file:
+        root_obj = json.loads(input_file.read())['dist']
 
-    mode = None
-    f = open(file_info)
+    for char in root_obj['freq_char'].keys():
+        if not char in (lower_char + upper_char + figures):
+            spec_char.append(char)
 
-    for line in f:
+    for level in root_obj['freq_dom_length'].keys():
+        if not int(level) in freq_dom_length:
+            freq_dom_length[int(level)] = {}
 
-        if line.startswith("#"):
-            # set the mode to know which kind of data have to be evaluated afterwards
-            level = None
-            find = regexp_char_freq.search(line)
-            if find:
-                mode = MODE_CHAR
-            else:
-                find = regexp_domlength_freq.search(line)
-                if find:
-                    mode = MODE_DOM_LENGTH
+        v = root_obj['freq_dom_length'][level]
+        freq_dom_length[int(level)] = v
 
-                else:
-                    find = regexp_wordlength_freq.search(line)
-                    if find:
-                        mode = MODE_WORD_LENGTH
-                    else:
-                        find = regexp_firstchar.search(line)
-                        if find:
-                            mode = MODE_FIRST_CHAR
-                        else:
-                            mode = None
+        if MAX_DOM_LENGTH[0] == None or v > MAX_DOM_LENGTH[0]:
+            MAX_DOM_LENGTH[0] = v
 
-        else:
-            line = line.strip()
-            if len(line) > 0:
-                if mode == MODE_CHAR:
-                    txts = line.rsplit(":", 1)
-                    if not (
-                        txts[0] in lower_char
-                        or txts[0] in upper_char
-                        or txts[0] in figures
-                    ):
-                        spec_char.append(txts[0])
-                elif mode == MODE_DOM_LENGTH:
-                    txts = line.split(":")
-                    number = int(txts[0].strip())
+        if MIN_DOM_LENGTH[0] == None or v < MIN_DOM_LENGTH[0]:
+            MIN_DOM_LENGTH[0] = v
 
-                    freq_dom_length[number] = float(txts[1].strip())
+    for level in root_obj['freq_word_length'].keys():
+        if not str(level) in freq_word_length:
+            freq_word_length[int(level)] = {}
 
-                    if MAX_DOM_LENGTH[0] == None or number > MAX_DOM_LENGTH[0]:
-                        MAX_DOM_LENGTH[0] = number
-                    if MIN_DOM_LENGTH[0] == None or number < MIN_DOM_LENGTH[0]:
-                        MIN_DOM_LENGTH[0] = number
+        MAX_WORD_LENGTH[int(level)] = mxw[int(level)]
+        MIN_WORD_LENGTH[int(level)] = miw[int(level)]
 
-                elif mode == MODE_WORD_LENGTH:
-                    txts = line.split(":", 1)
-                    find = regexp_level.search(txts[0])
-                    if find:
-                        level = int(find.group(1))
+        for key in root_obj['freq_word_length'][level].keys():
+            v = root_obj['freq_word_length'][level][key]
+            freq_word_length[int(level)][int(key)] = v
 
-                        MAX_WORD_LENGTH[level] = mxw[level]
-                        MIN_WORD_LENGTH[level] = miw[level]
+            if int(key) > MAX_WORD_LENGTH[int(level)]:
+                MAX_WORD_LENGTH[int(level)] = int(key)
 
-                        if not level in freq_word_length.keys():
-                            freq_word_length[level] = {}
+            if int(key) < MIN_WORD_LENGTH[int(level)]:
+                MIN_WORD_LENGTH[int(level)] = int(key)
 
-                        for val in txts[1].split(","):
-                            spl = val.split(":")
+    for level in root_obj['freq_first'].keys():
+        if not int(level) in freq_first:
+            freq_first[int(level)] = {}
 
-                            if len(spl) == 2:
-                                lng = int(spl[0].strip())
-                                frq = float(spl[1].strip())
-                                freq_word_length[level][lng] = frq
-
-                                if (
-                                    not level in MAX_WORD_LENGTH.keys()
-                                    or lng > MAX_WORD_LENGTH[level]
-                                ):
-                                    MAX_WORD_LENGTH[level] = lng
-                                if (
-                                    not level in MIN_WORD_LENGTH.keys()
-                                    or lng < MIN_WORD_LENGTH[level]
-                                ):
-                                    MIN_WORD_LENGTH[level] = lng
-
-                elif mode == MODE_FIRST_CHAR:
-                    txts = line.split(":", 1)
-                    find = regexp_level.search(txts[0])
-                    if find:
-                        level = int(find.group(1))
-                        if not level in freq_first.keys():
-                            freq_first[level] = {}
-
-                        for val in txts[1].split(","):
-                            spl = val.split(":")
-                            if len(spl) == 2:
-                                lng = spl[0].strip()
-                                frq = float(spl[1].strip())
-                                freq_first[level][lng] = frq
+        for key in root_obj['freq_first'][level].keys():
+            v = root_obj['freq_first'][level][key]
+            freq_first[int(level)][key] = v
 
 
-def read_trans(file_trans):
-    f = open(file_trans)
+def read_trans(input_file_name):
+    global transitions
+    global max_proba_transitions
 
-    for line in f:
-        line = line.strip()
-        find = regexp_trans.search(line)
+    with open(input_file_name, 'r') as input_file:
+        root_obj = json.loads(input_file.read())['trans']
+        levels = list(map(int, root_obj.keys()))
 
-        if find:
+    for level in levels:
+        if not level in transitions:
+            transitions[level] = {}
+        if not level in max_proba_transitions:
+            max_proba_transitions[level] = []
 
-            level = int(find.group(1))
-            bigram = find.group(2)
-            proba = float(find.group(3))
+        # BUG: Turns out this program only works for bigrams, not general ngrams
+        for bigram in root_obj[str(level)]:
+            c_from, c_to = bigram[0], bigram[1]
+            prob = root_obj[str(level)][bigram]
+            if not c_from in transitions[level]:
+                transitions[level][c_from] = {}
+            transitions[level][c_from][c_to] = prob
+            max_proba_transitions[level].append(prob)
 
-            if not level in transitions.keys():
-                transitions[level] = {}
-            level_ent = transitions[level]
-
-            if not level in max_proba_transitions.keys():
-                max_proba_transitions[level] = []
-            else:
-                max_proba_transitions[level].append(proba)
-
-            if not bigram[0] in level_ent.keys():
-                level_ent[bigram[0]] = {}
-            char_ent = level_ent[bigram[0]]
-
-            char_ent[bigram[1]] = proba
-        else:
-            print("Error line did not match")
-
-    for lev in max_proba_transitions.keys():
-        max_proba_transitions[lev] = numpy.mean(max_proba_transitions[lev])
+    # TODO: Figure out what the fuck this is supposed to be doing
+    for level in max_proba_transitions:
+        max_proba_transitions[level] = numpy.mean(max_proba_transitions[level])
 
 
 def update_freq(custom_length, levels_opt):
@@ -443,27 +378,16 @@ def generate_score(name, eps_mat, eps_length, eps_start):
 
 
 if __name__ == "__main__":
-
     lineparser = OptionParser("")
     lineparser.add_option(
-        "-d",
-        "--distribution",
+        "-i",
+        "--input",
         dest="input",
-        default="distribution.txt",
+        default="input.json",
         type="string",
-        help="general distribution file (with length frequencies)",
+        help="serialized Markov Chain and stats file",
         metavar="FILE",
     )
-    lineparser.add_option(
-        "-t",
-        "--transition",
-        dest="transition",
-        default="transition.txt",
-        type="string",
-        help="character transition matrix",
-        metavar="FILE",
-    )
-
     lineparser.add_option(
         "-e",
         "--epsilons",
@@ -488,7 +412,6 @@ if __name__ == "__main__":
         type="string",
         help="epsilon values for empty values in length distribution",
     )
-
     lineparser.add_option(
         "-n",
         "--number-to-generate",
@@ -497,14 +420,12 @@ if __name__ == "__main__":
         type="int",
         help="number of names to generate",
     )
-
     lineparser.add_option(
         "-s", "--suffix", dest="suffix", default="", type="string", help="suffix value"
     )
     lineparser.add_option(
         "-p", "--prefix", dest="prefix", default="", type="string", help="prefix value"
     )
-
     lineparser.add_option(
         "-w",
         "--word-level",
@@ -513,7 +434,6 @@ if __name__ == "__main__":
         type="string",
         help="word levels to generate",
     )
-
     lineparser.add_option(
         "--cw",
         "--custom-words",
@@ -522,7 +442,6 @@ if __name__ == "__main__":
         type="int",
         help="length (in words) of the custom words (prefix and suffix)",
     )
-
     lineparser.add_option(
         "--mxw",
         "--max-length-words",
@@ -539,16 +458,6 @@ if __name__ == "__main__":
         type="string",
         help="minimal word lengths (may be adjusted regarding the training)",
     )
-
-    lineparser.add_option(
-        "-f",
-        "--features",
-        dest="feature",
-        default="",
-        type="string",
-        help="if specified the program will generate the different feature for the domains contained in the mentionned file",
-        metavar="FILE",
-    )
     lineparser.add_option(
         "-o",
         "--output",
@@ -560,7 +469,6 @@ if __name__ == "__main__":
     )
 
     options, args = lineparser.parse_args()
-
     eps_mat = list(map(lambda x: float(x), options.eps.split(" ")))
     eps_start = list(map(lambda x: float(x), options.eps_start.split(" ")))
     eps_length = list(map(lambda x: float(x), options.eps_length.split(" ")))
@@ -569,7 +477,7 @@ if __name__ == "__main__":
     miw = list(map(lambda x: int(x), options.miw.split(" ")))
 
     read_info(options.input, mxw, miw)
-    read_trans(options.transition)
+    read_trans(options.input)
 
     update_freq(options.cwords, levels_opt)
 
@@ -595,24 +503,3 @@ if __name__ == "__main__":
             if tot > options.number_generate:
                 break
             sys.stdout.write(name + '\n')
-            '''
-            try:
-
-                answers = dns.resolver.query(name, "A")
-
-                totGood += 1
-                print(tot, totGood, totBad, name, "\t\t")
-                for rdata in answers.rrset:
-                    print(rdata.to_text())
-                print("\n")
-
-                # time.sleep(0.1)
-
-                fw = open(options.output, "a")
-                fw.write(name + "\n")
-                fw.close()
-
-            except:
-                totBad += 1
-                print(tot, totGood, totBad, name)
-            '''
