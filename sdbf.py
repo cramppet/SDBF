@@ -119,13 +119,13 @@ def read_info(input_file_name):
             FREQ_DOM_LENGTH[int(level)] = {}
 
         v = root_obj['freq_dom_length'][level]
-        FREQ_DOM_LENGTH[int(level)] = int(v)
+        FREQ_DOM_LENGTH[int(level)] = float(v)
 
-        if MAX_DOM_LENGTH[0] == None or int(v) > MAX_DOM_LENGTH[0]:
-            MAX_DOM_LENGTH[0] = int(v)
+        if MAX_DOM_LENGTH[0] == None or float(v) > MAX_DOM_LENGTH[0]:
+            MAX_DOM_LENGTH[0] = float(v)
 
-        if MIN_DOM_LENGTH[0] == None or int(v) < MIN_DOM_LENGTH[0]:
-            MIN_DOM_LENGTH[0] = int(v)
+        if MIN_DOM_LENGTH[0] == None or float(v) < MIN_DOM_LENGTH[0]:
+            MIN_DOM_LENGTH[0] = float(v)
 
     for level in root_obj['freq_word_length'].keys():
         if not str(level) in FREQ_WORD_LENGTH:
@@ -210,7 +210,6 @@ def update_freq(custom_length):
     tot = 0.0
 
     for k, v in FREQ_DOM_LENGTH.items():
-
         if k <= custom_length or k > custom_length + len(levels_opt):
             toRemove.append(k)
         else:
