@@ -24,60 +24,55 @@
 ################################################################################
 
 import sys
-import re
-import glob
-import numpy
-import math
-import copy
-import time
 import random
 import json
-import time
 
 from optparse import OptionParser
+
+import numpy
 from bloom_filter import BloomFilter
 
 
 VALUE = "value"
-MODE_CHAR = 1
-MODE_DOM_LENGTH = 2
-MODE_WORD_LENGTH = 3
-MODE_FIRST_CHAR = 4
 OTHERS = "Others"
 
-
-lower_char = list(map(lambda x: chr(x), range(ord("a"), ord("z") + 1)))
-upper_char = list(map(lambda x: chr(x), range(ord("A"), ord("Z") + 1)))
-figures = list(map(lambda x: str(x), range(10)))
-
-
 # Model variables
-spec_char = []
-freq_dom_length = {}
-freq_word_length = {}
-freq_first = {}
-transitions = {}
+LOWER_CHAR = list(map(chr, range(ord("a"), ord("z") + 1)))
+UPPER_CHAR = list(map(chr, range(ord("A"), ord("Z") + 1)))
+FIGURES = list(map(str, range(10)))
+SPEC_CHAR = []
+FREQ_DOM_LENGTH = {}
+FREQ_WORD_LENGTH = {}
+FREQ_FIRST = {}
+TRANSITIONS = {}
 MAX_DOM_LENGTH = [None]
 MIN_DOM_LENGTH = [None]
 MAX_WORD_LENGTH = {}
 MIN_WORD_LENGTH = {}
-
-max_proba_transitions = {}
+MAX_PROBA_TRANSITIONS = {}
 
 
 def get_all_chars():
+    '''
+    get_all_chars build the character set for the generation model
+    '''
     all_chars = []
-    all_chars.extend(upper_char)
-    all_chars.extend(lower_char)
-    all_chars.extend(spec_char)
-    all_chars.extend(figures)
+    all_chars.extend(UPPER_CHAR)
+    all_chars.extend(LOWER_CHAR)
+    all_chars.extend(SPEC_CHAR)
+    all_chars.extend(FIGURES)
     return all_chars
 
 
 def generate_val(dict_freq, eps):
-
+    '''
+    generate_val uses the frequencies given in `dict_freq` to perform a weighted
+    random element generation. `eps` is an epsilon value used to bias the
+    generation, in most cases, it is set to 0.
+    '''
     rnd = random.random()
-    tot = 0.0
+    gen_total = 0.0
+
     # We remove the Others from the counting
     if OTHERS in dict_freq.keys():
         nvalues = len(dict_freq.keys()) - 1
@@ -86,11 +81,11 @@ def generate_val(dict_freq, eps):
 
     for k, v in dict_freq.items():
         if k != OTHERS:
-            tot = tot + v - (eps / (1.0 * nvalues))
-            if rnd < tot:
+            gen_total = gen_total + v - (eps / (1.0 * nvalues))
+            if rnd < gen_total:
                 return k
 
-    # if we are here, no selection has been made, random selection over the others:
+    # if we are here, no selection has been made, random selection over others
     return dict_freq[OTHERS][random.randint(0, len(dict_freq[OTHERS]) - 1)]
 
 
@@ -110,37 +105,38 @@ def get_proba(dict_freq, eps, val):
 
 # TODO: They didn't use the character distribution in the original for anything
 # other than trying to identify characters not within their pre-existing charset.
-def read_info(input_file_name, mxw, miw):
+#def read_info(input_file_name, mxw, miw):
+def read_info(input_file_name):
     with open(input_file_name, 'r') as input_file:
         root_obj = json.loads(input_file.read())['dist']
 
     for char in root_obj['freq_char'].keys():
-        if not char in (lower_char + upper_char + figures):
-            spec_char.append(char)
+        if not char in (LOWER_CHAR + UPPER_CHAR + FIGURES):
+            SPEC_CHAR.append(char)
 
     for level in root_obj['freq_dom_length'].keys():
-        if not int(level) in freq_dom_length:
-            freq_dom_length[int(level)] = {}
+        if not int(level) in FREQ_DOM_LENGTH:
+            FREQ_DOM_LENGTH[int(level)] = {}
 
         v = root_obj['freq_dom_length'][level]
-        freq_dom_length[int(level)] = v
+        FREQ_DOM_LENGTH[int(level)] = int(v)
 
-        if MAX_DOM_LENGTH[0] == None or v > MAX_DOM_LENGTH[0]:
-            MAX_DOM_LENGTH[0] = v
+        if MAX_DOM_LENGTH[0] == None or int(v) > MAX_DOM_LENGTH[0]:
+            MAX_DOM_LENGTH[0] = int(v)
 
-        if MIN_DOM_LENGTH[0] == None or v < MIN_DOM_LENGTH[0]:
-            MIN_DOM_LENGTH[0] = v
+        if MIN_DOM_LENGTH[0] == None or int(v) < MIN_DOM_LENGTH[0]:
+            MIN_DOM_LENGTH[0] = int(v)
 
     for level in root_obj['freq_word_length'].keys():
-        if not str(level) in freq_word_length:
-            freq_word_length[int(level)] = {}
+        if not str(level) in FREQ_WORD_LENGTH:
+            FREQ_WORD_LENGTH[int(level)] = {}
 
         MAX_WORD_LENGTH[int(level)] = mxw[int(level)]
         MIN_WORD_LENGTH[int(level)] = miw[int(level)]
 
         for key in root_obj['freq_word_length'][level].keys():
             v = root_obj['freq_word_length'][level][key]
-            freq_word_length[int(level)][int(key)] = v
+            FREQ_WORD_LENGTH[int(level)][int(key)] = v
 
             if int(key) > MAX_WORD_LENGTH[int(level)]:
                 MAX_WORD_LENGTH[int(level)] = int(key)
@@ -149,45 +145,46 @@ def read_info(input_file_name, mxw, miw):
                 MIN_WORD_LENGTH[int(level)] = int(key)
 
     for level in root_obj['freq_first'].keys():
-        if not int(level) in freq_first:
-            freq_first[int(level)] = {}
+        if not int(level) in FREQ_FIRST:
+            FREQ_FIRST[int(level)] = {}
 
         for key in root_obj['freq_first'][level].keys():
             v = root_obj['freq_first'][level][key]
-            freq_first[int(level)][key] = v
+            FREQ_FIRST[int(level)][key] = v
 
 
 def read_trans(input_file_name):
-    global transitions
-    global max_proba_transitions
+    global TRANSITIONS
+    global MAX_PROBA_TRANSITIONS
 
     with open(input_file_name, 'r') as input_file:
         root_obj = json.loads(input_file.read())['trans']
         levels = list(map(int, root_obj.keys()))
 
     for level in levels:
-        if not level in transitions:
-            transitions[level] = {}
-        if not level in max_proba_transitions:
-            max_proba_transitions[level] = []
+        if not level in TRANSITIONS:
+            TRANSITIONS[level] = {}
+        if not level in MAX_PROBA_TRANSITIONS:
+            MAX_PROBA_TRANSITIONS[level] = []
 
         # BUG: Turns out this program only works for bigrams, not general ngrams
         for bigram in root_obj[str(level)]:
             c_from, c_to = bigram[0], bigram[1]
             prob = root_obj[str(level)][bigram]
-            if not c_from in transitions[level]:
-                transitions[level][c_from] = {}
-            transitions[level][c_from][c_to] = prob
-            max_proba_transitions[level].append(prob)
+            if not c_from in TRANSITIONS[level]:
+                TRANSITIONS[level][c_from] = {}
+            TRANSITIONS[level][c_from][c_to] = prob
+            MAX_PROBA_TRANSITIONS[level].append(prob)
 
     # TODO: Figure out what the fuck this is supposed to be doing
-    for level in max_proba_transitions:
-        max_proba_transitions[level] = numpy.mean(max_proba_transitions[level])
+    for level in MAX_PROBA_TRANSITIONS:
+        MAX_PROBA_TRANSITIONS[level] = numpy.mean(MAX_PROBA_TRANSITIONS[level])
 
 
-def update_freq(custom_length, levels_opt):
+#def update_freq(custom_length, levels_opt):
+def update_freq(custom_length):
 
-    for lev, v in transitions.items():
+    for lev, v in TRANSITIONS.items():
         for c1, v2 in v.items():
 
             all_chars = get_all_chars()
@@ -195,24 +192,24 @@ def update_freq(custom_length, levels_opt):
                 all_chars.remove(c2)
             v[c1][OTHERS] = all_chars
 
-    for lev, v in freq_first.items():
+    for lev, v in FREQ_FIRST.items():
         all_chars = get_all_chars()
         for c2 in v.keys():
             all_chars.remove(c2)
-        freq_first[lev][OTHERS] = all_chars
+        FREQ_FIRST[lev][OTHERS] = all_chars
 
-    for lev, v in freq_word_length.items():
+    for lev, v in FREQ_WORD_LENGTH.items():
         all_lengths = list(range(MIN_WORD_LENGTH[lev], MAX_WORD_LENGTH[lev] + 1))
 
         for k2 in v.keys():
             all_lengths.remove(k2)
 
-        freq_word_length[lev][OTHERS] = all_lengths
+        FREQ_WORD_LENGTH[lev][OTHERS] = all_lengths
 
     toRemove = []
     tot = 0.0
 
-    for k, v in freq_dom_length.items():
+    for k, v in FREQ_DOM_LENGTH.items():
 
         if k <= custom_length or k > custom_length + len(levels_opt):
             toRemove.append(k)
@@ -220,16 +217,14 @@ def update_freq(custom_length, levels_opt):
             tot = tot + v
 
     for r in toRemove:
-        del freq_dom_length[r]
+        del FREQ_DOM_LENGTH[r]
 
-    for k, v in freq_dom_length.items():
-        freq_dom_length[k] = v / tot
+    for k, v in FREQ_DOM_LENGTH.items():
+        FREQ_DOM_LENGTH[k] = v / tot
 
 
-def generate_name(
-    pref, suff, custom_length, levels_opt, eps_mat, eps_length, eps_start
-):
-
+#def generate_name(pref, suff, custom_length, levels_opt, eps_mat, eps_length, eps_start):
+def generate_name(pref, suff, custom_length):
     # Generation is done from right to left
 
     name = ""
@@ -239,7 +234,7 @@ def generate_name(
 
     # Determine the number of words to generate:
 
-    nwords = generate_val(freq_dom_length, 0.0) - custom_length
+    nwords = generate_val(FREQ_DOM_LENGTH, 0.0) - custom_length
 
     # Iterate over the words
     for i in range(nwords):
@@ -248,18 +243,18 @@ def generate_name(
 
         # Get the length of the word for this level
         length = generate_val(
-            freq_word_length[levels_opt[i]], eps_length[levels_opt[i]]
+            FREQ_WORD_LENGTH[levels_opt[i]], eps_length[levels_opt[i]]
         )
 
         # Generate the first letter
-        last_char = generate_val(freq_first[levels_opt[i]], eps_start[levels_opt[i]])
+        last_char = generate_val(FREQ_FIRST[levels_opt[i]], eps_start[levels_opt[i]])
         gen = "" + last_char
 
         # Generate following letters
         for _ in range(length - 1):
-            if last_char in transitions[levels_opt[i]]:
+            if last_char in TRANSITIONS[levels_opt[i]]:
                 last_char = generate_val(
-                    transitions[levels_opt[i]][last_char], eps_mat[levels_opt[i]]
+                    TRANSITIONS[levels_opt[i]][last_char], eps_mat[levels_opt[i]]
                 )
             else:
                 # this character was never in a digram (it has been selectionned due to epsilon
@@ -277,9 +272,10 @@ def generate_name(
     return name
 
 
-def generate_feature(name, eps_mat, eps_length, eps_start):
+#def generate_feature(name, eps_mat, eps_length, eps_start):
+def generate_feature():
 
-    maxW = max(freq_dom_length.keys())
+    maxW = max(FREQ_DOM_LENGTH.keys())
 
     words = name.strip().split(".")
     words = words[max(0, len(words) - maxW) :]
@@ -306,13 +302,13 @@ def generate_feature(name, eps_mat, eps_length, eps_start):
         last_char = w[0]
         w = w[1:]
 
-        proba = get_proba(freq_first[lev], eps_start[lev], last_char)
+        proba = get_proba(FREQ_FIRST[lev], eps_start[lev], last_char)
         # Continuing over following letters
         while w != "":
             last_char2 = w[0]
             w = w[1:]
             proba = proba * get_proba(
-                transitions[lev][last_char], eps_mat[lev], last_char2
+                TRANSITIONS[lev][last_char], eps_mat[lev], last_char2
             )
             # proba = proba +  get_proba(transitions[lev][last_char],eps_start[lev],last_char2)
             last_char = last_char2
@@ -322,16 +318,17 @@ def generate_feature(name, eps_mat, eps_length, eps_start):
     return (proba_length, proba_word_lengths, proba_words)
 
 
-def generate_score(name, eps_mat, eps_length, eps_start):
+#def generate_score(name, eps_mat, eps_length, eps_start):
+def generate_score():
 
-    maxW = max(freq_dom_length.keys())
+    maxW = max(FREQ_DOM_LENGTH.keys())
 
     words = name.strip().split(".")
     words = words[max(0, len(words) - maxW) :]
     words.reverse()
 
     # compute the probability of the domain length
-    proba_length = get_proba(freq_dom_length, 0.0, len(words))
+    proba_length = get_proba(FREQ_DOM_LENGTH, 0.0, len(words))
 
     proba_word_lengths = [1.0] * maxW
     proba_words = [1.0] * maxW
@@ -342,7 +339,7 @@ def generate_score(name, eps_mat, eps_length, eps_start):
 
         # Get the proba for the current length
         proba_word_lengths[lev] = get_proba(
-            freq_word_length[lev], eps_length[lev], len(w)
+            FREQ_WORD_LENGTH[lev], eps_length[lev], len(w)
         )
 
         # Get the proba of the words
@@ -350,13 +347,13 @@ def generate_score(name, eps_mat, eps_length, eps_start):
         last_char = w[0]
         w = w[1:6]
 
-        proba = get_proba(freq_first[lev], eps_start[lev], last_char)
+        proba = get_proba(FREQ_FIRST[lev], eps_start[lev], last_char)
         # Continuing over following letters
         while w != "":
             last_char2 = w[0]
             w = w[1:]
             proba = proba * get_proba(
-                transitions[lev][last_char], eps_mat[lev], last_char2
+                TRANSITIONS[lev][last_char], eps_mat[lev], last_char2
             )
             # proba = proba +  get_proba(transitions[lev][last_char],eps_start[lev],last_char2)
             last_char = last_char2
@@ -469,34 +466,22 @@ if __name__ == "__main__":
     )
 
     options, args = lineparser.parse_args()
-    eps_mat = list(map(lambda x: float(x), options.eps.split(" ")))
-    eps_start = list(map(lambda x: float(x), options.eps_start.split(" ")))
-    eps_length = list(map(lambda x: float(x), options.eps_length.split(" ")))
-    levels_opt = list(map(lambda x: int(x), options.levels.split(" ")))
-    mxw = list(map(lambda x: int(x), options.mxw.split(" ")))
-    miw = list(map(lambda x: int(x), options.miw.split(" ")))
-
-    read_info(options.input, mxw, miw)
-    read_trans(options.input)
-
-    update_freq(options.cwords, levels_opt)
-
     tot = 0
-    totGood = 0
-    totBad = 0
-
     myBloom = BloomFilter(options.number_generate, 0.0001)
 
+    eps_mat = list(map(float, options.eps.split(" ")))
+    eps_start = list(map(float, options.eps_start.split(" ")))
+    eps_length = list(map(float, options.eps_length.split(" ")))
+    levels_opt = list(map(int, options.levels.split(" ")))
+    mxw = list(map(int, options.mxw.split(" ")))
+    miw = list(map(int, options.miw.split(" ")))
+
+    read_info(options.input)
+    read_trans(options.input)
+    update_freq(options.cwords)
+
     for k in range(options.number_generate * 5):
-        name = generate_name(
-            options.prefix,
-            options.suffix,
-            options.cwords,
-            levels_opt,
-            eps_mat,
-            eps_length,
-            eps_start,
-        )
+        name = generate_name(options.prefix, options.suffix, options.cwords)
         if not name in myBloom:
             myBloom.add(name)
             tot += 1

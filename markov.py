@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import json
-import argparse
 import sys
 
 
@@ -19,47 +18,42 @@ def main():
     # Histogram of occurances of number of levels in names; ex. 'a.b.com' = 3
     level_count = {}
     # Histogram of number of chars for observed levels
-    total_chars_per_level = { 0: 0, 1: 0, 2: 0, 3: 0 }
+    total_chars_per_level = {0: 0, 1: 0, 2: 0, 3: 0}
     # Histogram of observed first characters for each level
-    first_chars_per_level = { 0: {}, 1: {}, 2: {}, 3: {} }
+    first_chars_per_level = {0: {}, 1: {}, 2: {}, 3: {}}
     # Histogram of lengths of levels for observed DNS names
-    level_len_count = { 0: {}, 1: {}, 2: {}, 3: {} }
+    level_len_count = {0: {}, 1: {}, 2: {}, 3: {}}
     # Histogram of first character of n-grams for observed levels
-    first_chars_per_ngram = { 0: {}, 1: {}, 2: {}, 3: {} }
+    first_chars_per_ngram = {0: {}, 1: {}, 2: {}, 3: {}}
     # Histogram of n-grams for observed levels
-    ngrams_per_level = { 0: {}, 1: {}, 2: {}, 3: {} }
+    ngrams_per_level = {0: {}, 1: {}, 2: {}, 3: {}}
 
     if len(sys.argv) < 3:
-        #print('usage: ./markov.py <input_file> <n-gram length> <dist file> <trans file>')
         print('usage: ./markov.py <input_file> <n-gram length> <output file>')
         sys.exit(1)
 
     ngram_len = int(sys.argv[2])
     output_file_name = sys.argv[3]
-    #dist_file_name = sys.argv[3]
-    #trans_file_name = sys.argv[4]
     output_root = {
-        'trans': { 0: {}, 1: {}, 2: {}, 3: {} },
+        'trans': {0: {}, 1: {}, 2: {}, 3: {}},
         'dist': {
-            #'total_dns_names': 0,
-            #'avg_name_length': 0,
             'freq_char': {},
-            'freq_word_length': { 0: {}, 1: {}, 2: {}, 3: {} },
-            'freq_first': { 0: {}, 1: {}, 2: {}, 3: {} },
+            'freq_word_length': {0: {}, 1: {}, 2: {}, 3: {}},
+            'freq_first': {0: {}, 1: {}, 2: {}, 3: {}},
             # TODO: We track levels starting from 0, the original reported them
             # as starting from 1, be aware!
-            'freq_dom_length': { 0: 0, 1: 0, 2: '0', 3: 0, 4: 0 },
+            'freq_dom_length': {0: 0, 1: 0, 2: '0', 3: 0, 4: 0},
         },
     }
 
     def preprocess(dns_name):
         return dns_name.strip().lower()
 
-    def inc_or_insert(d, key, default=1, inc=1):
-        if not key in d:
-            d[key] = default
+    def inc_or_insert(dictionary, key, default=1, inc=1):
+        if not key in dictionary:
+            dictionary[key] = default
         else:
-            d[key] += inc
+            dictionary[key] += inc
 
     def get_ngrams(base):
         for i in range(0, len(base)-ngram_len+1):
@@ -90,9 +84,6 @@ def main():
 
             for letter in name:
                 inc_or_insert(char_count, letter)
-        
-        #output_root['dist']['total_dns_names'] = len(dns_names)
-        #output_root['dist']['avg_name_length'] = total_length / len(dns_names)
 
         for char in sorted(char_count.keys()):
             freq = char_count[char] / total_length
@@ -124,8 +115,8 @@ def main():
                         prob = count / first_chars_per_ngram[level][char]
                         output_root['trans'][level][ngram] = prob
 
-        with open(output_file_name, 'w') as output_file:
-            output_file.write(json.dumps(output_root))
+    with open(output_file_name, 'w') as output_file:
+        output_file.write(json.dumps(output_root))
 
 
 if __name__ == '__main__':
