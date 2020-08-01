@@ -71,7 +71,7 @@ def main():
 
             total_length += len(name)
             total_levels += n
-            inc_or_insert(level_count, k-1) 
+            inc_or_insert(level_count, k-1)
 
             for i in range(k):
                 inc_or_insert(first_chars_per_level[i], levels[k-(i+1)][0])

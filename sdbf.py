@@ -81,11 +81,13 @@ def generate_val(dict_freq, eps):
 
     for k, v in dict_freq.items():
         if k != OTHERS:
-            gen_total = gen_total + v - (eps / (1.0 * nvalues))
+            gen_total = gen_total + v - (eps/nvalues)
             if rnd < gen_total:
                 return k
 
     # if we are here, no selection has been made, random selection over others
+    # BUG: This assertion sometimes fails, why?
+    assert len(dict_freq[OTHERS]) != 0
     return dict_freq[OTHERS][random.randint(0, len(dict_freq[OTHERS]) - 1)]
 
 
@@ -168,9 +170,9 @@ def read_trans(input_file_name):
             MAX_PROBA_TRANSITIONS[level] = []
 
         # BUG: Turns out this program only works for bigrams, not general ngrams
-        for bigram in root_obj[str(level)]:
-            c_from, c_to = bigram[0], bigram[1]
-            prob = root_obj[str(level)][bigram]
+        for ngram in root_obj[str(level)]:
+            c_from, c_to = ngram[:-1], ngram[-1]
+            prob = root_obj[str(level)][ngram]
             if not c_from in TRANSITIONS[level]:
                 TRANSITIONS[level][c_from] = {}
             TRANSITIONS[level][c_from][c_to] = prob
@@ -178,15 +180,21 @@ def read_trans(input_file_name):
 
     # TODO: Figure out what the fuck this is supposed to be doing
     for level in MAX_PROBA_TRANSITIONS:
-        MAX_PROBA_TRANSITIONS[level] = numpy.mean(MAX_PROBA_TRANSITIONS[level])
+        if len(MAX_PROBA_TRANSITIONS[level]) > 0:
+            MAX_PROBA_TRANSITIONS[level] = numpy.mean(MAX_PROBA_TRANSITIONS[level])
+        else:
+            MAX_PROBA_TRANSITIONS[level] = 0.0
 
 
 #def update_freq(custom_length, levels_opt):
 def update_freq(custom_length):
+    '''
+    update_freq applies user restrictions on the generation model. it modifies
+    the stats used to build the model in accordance with user options.
+    '''
 
     for lev, v in TRANSITIONS.items():
         for c1, v2 in v.items():
-
             all_chars = get_all_chars()
             for c2 in v2.keys():
                 all_chars.remove(c2)
@@ -198,24 +206,23 @@ def update_freq(custom_length):
             all_chars.remove(c2)
         FREQ_FIRST[lev][OTHERS] = all_chars
 
+    # Apply word length restrictions
     for lev, v in FREQ_WORD_LENGTH.items():
         all_lengths = list(range(MIN_WORD_LENGTH[lev], MAX_WORD_LENGTH[lev] + 1))
-
         for k2 in v.keys():
             all_lengths.remove(k2)
-
         FREQ_WORD_LENGTH[lev][OTHERS] = all_lengths
 
-    toRemove = []
+    to_remove = []
     tot = 0.0
 
     for k, v in FREQ_DOM_LENGTH.items():
         if k <= custom_length or k > custom_length + len(levels_opt):
-            toRemove.append(k)
+            to_remove.append(k)
         else:
             tot = tot + v
 
-    for r in toRemove:
+    for r in to_remove:
         del FREQ_DOM_LENGTH[r]
 
     for k, v in FREQ_DOM_LENGTH.items():
@@ -225,14 +232,11 @@ def update_freq(custom_length):
 #def generate_name(pref, suff, custom_length, levels_opt, eps_mat, eps_length, eps_start):
 def generate_name(pref, suff, custom_length):
     # Generation is done from right to left
-
     name = ""
     name += suff
-
     trans_temp = {OTHERS: get_all_chars()}
 
     # Determine the number of words to generate:
-
     nwords = generate_val(FREQ_DOM_LENGTH, 0.0) - custom_length
 
     # Iterate over the words
@@ -241,9 +245,7 @@ def generate_name(pref, suff, custom_length):
         # lev = levels_opt[i]
 
         # Get the length of the word for this level
-        length = generate_val(
-            FREQ_WORD_LENGTH[levels_opt[i]], eps_length[levels_opt[i]]
-        )
+        length = generate_val(FREQ_WORD_LENGTH[levels_opt[i]], eps_length[levels_opt[i]])
 
         # Generate the first letter
         last_char = generate_val(FREQ_FIRST[levels_opt[i]], eps_start[levels_opt[i]])
@@ -252,14 +254,10 @@ def generate_name(pref, suff, custom_length):
         # Generate following letters
         for _ in range(length - 1):
             if last_char in TRANSITIONS[levels_opt[i]]:
-                last_char = generate_val(
-                    TRANSITIONS[levels_opt[i]][last_char], eps_mat[levels_opt[i]]
-                )
+                last_char = generate_val(TRANSITIONS[levels_opt[i]][last_char], eps_mat[levels_opt[i]])
             else:
                 # this character was never in a digram (it has been selectionned due to epsilon
-
                 last_char = generate_val(trans_temp, 0.0)
-
             gen = gen + last_char
 
         if name != "":
@@ -269,108 +267,6 @@ def generate_name(pref, suff, custom_length):
 
     name = pref + name
     return name
-
-
-#def generate_feature(name, eps_mat, eps_length, eps_start):
-def generate_feature():
-
-    maxW = max(FREQ_DOM_LENGTH.keys())
-
-    words = name.strip().split(".")
-    words = words[max(0, len(words) - maxW) :]
-    words.reverse()
-
-    # compute the probability of the domain length
-    # proba_length = get_proba(freq_dom_length,0.0,len(words))
-    proba_length = len(words)
-
-    # proba_word_lengths = [1.0] * maxW
-    proba_word_lengths = [0.0] * maxW
-    proba_words = [1.0] * maxW
-
-    for lev in range(len(words)):
-
-        w = words[lev]
-        #n_transitions = len(w)
-
-        # Get the proba for the current length
-        # proba_word_lengths[lev] = get_proba(freq_word_length[lev],eps_length[lev],len(w))
-        proba_word_lengths[lev] = len(w)
-
-        # Get the proba of the words
-        last_char = w[0]
-        w = w[1:]
-
-        proba = get_proba(FREQ_FIRST[lev], eps_start[lev], last_char)
-        # Continuing over following letters
-        while w != "":
-            last_char2 = w[0]
-            w = w[1:]
-            proba = proba * get_proba(
-                TRANSITIONS[lev][last_char], eps_mat[lev], last_char2
-            )
-            # proba = proba +  get_proba(transitions[lev][last_char],eps_start[lev],last_char2)
-            last_char = last_char2
-
-        proba_words[lev] = proba
-
-    return (proba_length, proba_word_lengths, proba_words)
-
-
-#def generate_score(name, eps_mat, eps_length, eps_start):
-def generate_score():
-
-    maxW = max(FREQ_DOM_LENGTH.keys())
-
-    words = name.strip().split(".")
-    words = words[max(0, len(words) - maxW) :]
-    words.reverse()
-
-    # compute the probability of the domain length
-    proba_length = get_proba(FREQ_DOM_LENGTH, 0.0, len(words))
-
-    proba_word_lengths = [1.0] * maxW
-    proba_words = [1.0] * maxW
-
-    for lev in range(len(words)):
-
-        w = words[lev]
-
-        # Get the proba for the current length
-        proba_word_lengths[lev] = get_proba(
-            FREQ_WORD_LENGTH[lev], eps_length[lev], len(w)
-        )
-
-        # Get the proba of the words
-        # n_transitions = len(w)
-        last_char = w[0]
-        w = w[1:6]
-
-        proba = get_proba(FREQ_FIRST[lev], eps_start[lev], last_char)
-        # Continuing over following letters
-        while w != "":
-            last_char2 = w[0]
-            w = w[1:]
-            proba = proba * get_proba(
-                TRANSITIONS[lev][last_char], eps_mat[lev], last_char2
-            )
-            # proba = proba +  get_proba(transitions[lev][last_char],eps_start[lev],last_char2)
-            last_char = last_char2
-
-        proba_words[lev] = proba
-        # proba_words[lev] = proba / n_transitions
-        # proba_words[lev] = proba / (max_proba_transitions[lev]**(len(words[lev])-1))
-        # proba_words[lev] = proba * (len(words[lev])-1)
-
-    # return (proba_length, proba_word_lengths,proba_words)
-
-    mult = 1.0
-    for k in list(map(lambda x, y: x * y, proba_word_lengths, proba_words)):
-        # for k in proba_words:
-        mult = mult * k
-
-    # return mult
-    return proba_length * mult
 
 
 if __name__ == "__main__":
