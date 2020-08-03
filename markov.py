@@ -10,7 +10,6 @@ import tldextract
 from bloom_filter import BloomFilter
 
 
-# TODO: In the same way we track and use first_char, do the same for last_char
 # BUG: Our "total_chars_per_level" counter is different for level 0
 class MarkovChain:
     '''MarkovChain represents a simple Markov model for DNS names'''
@@ -29,6 +28,14 @@ class MarkovChain:
         #
         self.others = "Others"
         #
+        self.epsilon_trans = [0.001, 0.001, 0.001, 0.001]
+        #
+        self.epsilon_first = [0.001, 0.001, 0.001, 0.001]
+        #
+        self.epsilon_last = [0.001, 0.001, 0.001, 0.001]
+        #
+        self.epsilon_length = [0.001, 0.001, 0.001, 0.001]
+        #
         self.spec_char = []
         #
         self.freq_dom_length = {}
@@ -36,6 +43,8 @@ class MarkovChain:
         self.freq_word_length = {}
         #
         self.freq_first = {}
+        #
+        self.freq_last = {}
         #
         self.freq_char = {}
         #
@@ -62,6 +71,8 @@ class MarkovChain:
         self._total_chars_per_level = {0: 0, 1: 0, 2: 0, 3: 0}
         # Histogram of observed first characters for each level
         self._first_chars_per_level = {0: {}, 1: {}, 2: {}, 3: {}}
+        # Histogram of observed last characters for each level
+        self._last_chars_per_level = {0: {}, 1: {}, 2: {}, 3: {}}
         # Histogram of lengths of levels for observed DNS names
         self._level_len_count = {0: {}, 1: {}, 2: {}, 3: {}}
         # Histogram of first character of n-grams for observed levels
@@ -118,6 +129,13 @@ class MarkovChain:
                 all_chars.remove(c2)
             self.freq_first[lev][self.others] = all_chars
 
+        # Include all possible last chars based on character set.
+        for lev, v in self.freq_last.items():
+            all_chars = self._get_all_chars()
+            for c2 in v.keys():
+                all_chars.remove(c2)
+            self.freq_last[lev][self.others] = all_chars
+
         # Include all possible word lengths (based on range observed)
         for lev, v in self.freq_word_length.items():
             lev_min, lev_max = self.min_word_length[lev], self.max_word_length[lev]
@@ -142,6 +160,12 @@ class MarkovChain:
         # We remove the Others from the counting
         if self.others in dict_freq.keys():
             nvalues = len(dict_freq.keys()) - 1
+            # This makes it so that if what we observed already encompasses the
+            # bounds we observed (in the case of extending observed lengths)
+            # then we can't use epsilon since there are no others for us to
+            # extend our model with.
+            if len(dict_freq[self.others]) == 0:
+                epsilon = 0
         else:
             nvalues = len(dict_freq.keys())
 
@@ -151,11 +175,6 @@ class MarkovChain:
                 if rnd < gen_total:
                     return k
 
-        # if we are here, no selection has been made, random selection over
-        # others. BUG: This assertion sometimes fails, why?
-        #
-        # the asset fails when there are no other entities to move to, ie when
-        # we trained with insufficent data (eg. 1 sample)
         assert len(dict_freq[self.others]) != 0
         return dict_freq[self.others][random.randint(0, len(dict_freq[self.others]) - 1)]
 
@@ -171,21 +190,30 @@ class MarkovChain:
 
         # Iterate over the levels
         for i in range(nlevels):
+            eps_first = self.epsilon_first[i]
+            eps_last = self.epsilon_last[i]
+            eps_len = self.epsilon_length[i]
+            eps_trans = self.epsilon_trans[i]
+
             # Get the length of the word for this level
-            length = self._generate_val(self.freq_word_length[i])
+            length = self._generate_val(self.freq_word_length[i], eps_len)
 
             # Generate the first letter
-            last_char = self._generate_val(self.freq_first[i])
+            last_char = self._generate_val(self.freq_first[i], eps_first)
             gen = "" + last_char
 
-            # Generate following letters
-            for _ in range(length - 1):
+            # Generate following letters (-1 from first, -1 from final)
+            for _ in range(length - 2):
                 if last_char in self.transitions[i]:
-                    last_char = self._generate_val(self.transitions[i][last_char])
+                    last_char = self._generate_val(self.transitions[i][last_char], eps_trans)
                 else:
                     # this character was never in a digram (it has been selectionned due to epsilon
-                    last_char = self._generate_val(trans_temp, 0.0)
+                    last_char = self._generate_val(trans_temp)
                 gen = gen + last_char
+
+            # Account for final character at this level
+            final_char = self._generate_val(self.freq_last[i], eps_last)
+            gen = gen + final_char
 
             if name != "":
                 name = gen + "." + name
@@ -207,6 +235,7 @@ class MarkovChain:
 
             for i in range(k):
                 self._inc_or_insert(self._first_chars_per_level[i], levels[k-(i+1)][0])
+                self._inc_or_insert(self._last_chars_per_level[i], levels[k-(i+1)][-1])
                 self._inc_or_insert(self._level_len_count[i], len(levels[k-(i+1)]))
                 self._inc_or_insert(self._total_chars_per_level, i)
 
@@ -263,6 +292,14 @@ class MarkovChain:
                 freq = self._first_chars_per_level[level][char] / self._total_chars_per_level[level]
                 self.freq_first[level][char] = freq
 
+        for level in sorted(self._last_chars_per_level.keys()):
+            if not level in self.freq_last:
+                self.freq_last[level] = {}
+
+            for char in sorted(self._last_chars_per_level[level].keys()):
+                freq = self._last_chars_per_level[level][char] / self._total_chars_per_level[level]
+                self.freq_last[level][char] = freq
+
         # Setup ngram transition matrix of Markov Chain
         for level in sorted(self._ngrams_per_level.keys()):
             if level not in self.transitions:
@@ -290,7 +327,24 @@ def main():
         print('usage: ./markov.py <input_file>')
         sys.exit(1)
 
-    observed = BloomFilter(1000000, 0.0001)
+    observed = BloomFilter(280000, 0.0001)
+
+    def preprocess(dns_name):
+        return dns_name.strip().lower()
+
+    # with open(sys.argv[1]) as input_file:
+    #     dns_names = list(map(preprocess, input_file.readlines()))
+    #     model = MarkovChain()
+    #     model.train(dns_names)
+    #     count = 0
+    #     while count < 280000:
+    #         name = model.generate_name()
+    #         if name in observed:
+    #             continue
+    #         observed.add(name)
+    #         print(name)
+    #         count += 1
+        
     suffix_map = {}
     suffix_freq = {}
     suffix_models = {}
@@ -298,6 +352,7 @@ def main():
     def preprocess(dns_name):
         return dns_name.strip().lower()
 
+    # TODO: Should we add an epsilon to this to try and generate new suffix?
     def generate_val(dict_freq):
         rnd = random.random()
         gen_total = 0.0
@@ -313,16 +368,13 @@ def main():
 
         for name in dns_names:
             parts = name.split('.')[1:]
-            if len(parts) == 1:
-                num_names -= 1
-                continue
             suffix = '.'.join(parts)
             t = tldextract.extract(suffix)
             if t.domain == '':
                 num_names -= 1
                 continue
             if suffix not in suffix_map:
-                suffix_map[suffix] = []
+                suffix_map[suffix] = [name]
                 suffix_freq[suffix] = 1
             else:
                 suffix_freq[suffix] += 1
@@ -333,7 +385,7 @@ def main():
             suffix_freq[suffix] /= num_names
 
     count = 0
-    while count != 1000000:
+    while count != 280000:
         suffix = generate_val(suffix_freq)
         if suffix not in suffix_models:
             if len(suffix_map[suffix]) > 1:
