@@ -316,13 +316,13 @@ class MarkovChain:
 
 def main():
     parser = argparse.ArgumentParser(description='Markov modeling and generation of DNS names')
-    parser.add_argument('-n', metavar='COUNT', help='Number of names to generate')
+    parser.add_argument('-n', metavar='COUNT', type=int, help='Number of names to generate')
     parser.add_argument('INPUT_FILE', help='input list of observed DNS names')
     args = parser.parse_args()
 
-    count = args['COUNT']
-    input_file_name = args['INPUT_FILE']
-    observed = BloomFilter(count, 0.0001)
+    count = args.n
+    input_file_name = args.INPUT_FILE
+    observed = BloomFilter(count * 50, 0.0001)
 
     suffix_map = {}
     suffix_freq = {}
@@ -376,7 +376,7 @@ def main():
         if name not in observed:
             observed.add(name)
             count -= 1
-            sys.stdout.write(name + '\n')
+            print(name)
 
 
 if __name__ == '__main__':
