@@ -2,7 +2,6 @@
 
 #!/usr/bin/env python3
 
-import sys
 import random
 import argparse
 import tldextract
@@ -85,9 +84,9 @@ class MarkovChain:
 
     def _get_ngrams(self, base):
         for i in range(0, len(base)-self.NGRAM_LEN+1):
-            t = base[i:i+self.NGRAM_LEN]
-            if len(t) == self.NGRAM_LEN:
-                yield t
+            next_ngram = base[i:i+self.NGRAM_LEN]
+            if len(next_ngram) == self.NGRAM_LEN:
+                yield next_ngram
 
 
     def _get_all_chars(self):
@@ -117,25 +116,25 @@ class MarkovChain:
                 v[c_from][self.others] = all_chars
 
         # Include all possible first chars based on character set.
-        for lev, v in self.freq_first.items():
+        for lev, value in self.freq_first.items():
             all_chars = self._get_all_chars()
-            for c2 in v.keys():
+            for c2 in value.keys():
                 all_chars.remove(c2)
             self.freq_first[lev][self.others] = all_chars
 
         # Include all possible last chars based on character set.
-        for lev, v in self.freq_last.items():
+        for lev, value in self.freq_last.items():
             all_chars = self._get_all_chars()
-            for c2 in v.keys():
+            for c2 in value.keys():
                 all_chars.remove(c2)
             self.freq_last[lev][self.others] = all_chars
 
         # Include all possible word lengths (based on range observed)
-        for lev, v in self.freq_word_length.items():
+        for lev, value in self.freq_word_length.items():
             lev_min, lev_max = self.min_word_length[lev], self.max_word_length[lev]
             all_lengths = list(range(lev_min, lev_max + 1))
-            for k2 in v.keys():
-                all_lengths.remove(k2)
+            for c2 in value.keys():
+                all_lengths.remove(c2)
             self.freq_word_length[lev][self.others] = all_lengths
 
 

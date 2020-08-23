@@ -49,3 +49,7 @@ can then use with **MassDNS** like so:
 ```
 ./bin/massdns -r lists/resolvers.txt -t A -o S -w results.txt generated_names.txt
 ```
+
+## Example usage
+
+![Example usage](sdbf_usage.png)
