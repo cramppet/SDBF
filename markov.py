@@ -2,9 +2,9 @@
 
 #!/usr/bin/env python3
 
-import json
 import sys
 import random
+import argparse
 import tldextract
 
 from bloom_filter import BloomFilter
@@ -16,13 +16,8 @@ class MarkovChain:
 
     MAX_LEVELS = 4
     NGRAM_LEN = 2
-
-
-    # https://tools.ietf.org/html/rfc4343#section-2
-    #UPPER_CHAR = list(map(chr, range(ord("A"), ord("Z") + 1)))
     LOWER_CHAR = list(map(chr, range(ord("a"), ord("z") + 1)))
     FIGURES = list(map(str, range(10)))
-
 
     def __init__(self):
         #
@@ -100,7 +95,6 @@ class MarkovChain:
         get_all_chars build the character set for the generation model
         '''
         all_chars = []
-        #all_chars.extend(self.UPPER_CHAR)
         all_chars.extend(self.LOWER_CHAR)
         all_chars.extend(self.FIGURES)
         all_chars.extend(self.spec_char)
@@ -145,7 +139,6 @@ class MarkovChain:
             self.freq_word_length[lev][self.others] = all_lengths
 
 
-    # TODO: If eps is always set to 0, then Others never comes into play
     def _generate_val(self, dict_freq, epsilon=0):
         '''
         generate_val uses the frequencies given in `dict_freq` to perform a
@@ -179,7 +172,6 @@ class MarkovChain:
         return dict_freq[self.others][random.randint(0, len(dict_freq[self.others]) - 1)]
 
 
-    #def generate_name(pref, suff, custom_length, levels_opt, eps_mat, eps_length, eps_start):
     def generate_name(self, prefix="", suffix=""):
         # Generation is done from right to left
         name = prefix
@@ -207,7 +199,8 @@ class MarkovChain:
                 if last_char in self.transitions[i]:
                     last_char = self._generate_val(self.transitions[i][last_char], eps_trans)
                 else:
-                    # this character was never in a digram (it has been selectionned due to epsilon
+                    # This character was never in a bigram (it has been
+                    # selected due to epsilon)
                     last_char = self._generate_val(trans_temp)
                 gen = gen + last_char
 
@@ -249,8 +242,7 @@ class MarkovChain:
         for char in sorted(self._char_count.keys()):
             freq = self._char_count[char] / self._total_length
             self.freq_char[char] = freq
-            #if not char in (self.LOWER_CHAR + self.UPPER_CHAR + self.FIGURES):
-            if not char in (self.LOWER_CHAR + self.FIGURES):
+            if not char in self.LOWER_CHAR + self.FIGURES:
                 self.spec_char.append(char)
 
         # BUG: We need to fix the "level + 1" in sdbf.py
@@ -323,28 +315,15 @@ class MarkovChain:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print('usage: ./markov.py <input_file>')
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Markov modeling and generation of DNS names')
+    parser.add_argument('-n', metavar='COUNT', help='Number of names to generate')
+    parser.add_argument('INPUT_FILE', help='input list of observed DNS names')
+    args = parser.parse_args()
 
-    observed = BloomFilter(280000, 0.0001)
+    count = args['COUNT']
+    input_file_name = args['INPUT_FILE']
+    observed = BloomFilter(count, 0.0001)
 
-    def preprocess(dns_name):
-        return dns_name.strip().lower()
-
-    # with open(sys.argv[1]) as input_file:
-    #     dns_names = list(map(preprocess, input_file.readlines()))
-    #     model = MarkovChain()
-    #     model.train(dns_names)
-    #     count = 0
-    #     while count < 280000:
-    #         name = model.generate_name()
-    #         if name in observed:
-    #             continue
-    #         observed.add(name)
-    #         print(name)
-    #         count += 1
-        
     suffix_map = {}
     suffix_freq = {}
     suffix_models = {}
@@ -362,7 +341,7 @@ def main():
                 return k
         assert False
 
-    with open(sys.argv[1]) as input_file:
+    with open(input_file_name, 'r') as input_file:
         dns_names = list(map(preprocess, input_file.readlines()))
         num_names = len(dns_names)
 
@@ -384,8 +363,7 @@ def main():
         for suffix in suffix_freq:
             suffix_freq[suffix] /= num_names
 
-    count = 0
-    while count != 280000:
+    while count > 0:
         suffix = generate_val(suffix_freq)
         if suffix not in suffix_models:
             if len(suffix_map[suffix]) > 1:
@@ -397,8 +375,8 @@ def main():
         name = suffix_models[suffix].generate_name() + '.' + suffix
         if name not in observed:
             observed.add(name)
-            count += 1
-            print(name)
+            count -= 1
+            sys.stdout.write(name + '\n')
 
 
 if __name__ == '__main__':
